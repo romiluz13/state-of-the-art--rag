@@ -98,7 +98,7 @@ class TestIntentClassifier:
             assert result.strategy == "graphrag"
 
     def test_classify_hierarchical_query(self, classifier):
-        """Test hierarchical query -> RAPTOR."""
+        """Test hierarchical query -> LeanRAG (December 2025: was RAPTOR)."""
         queries = [
             "What does the introduction chapter say?",
             "What's in the conclusion section?",
@@ -107,7 +107,7 @@ class TestIntentClassifier:
         for query in queries:
             result = classifier.classify(query)
             assert result.intent == QueryIntent.HIERARCHICAL
-            assert result.strategy == "raptor"
+            assert result.strategy == "leanrag"  # December 2025: was "raptor"
 
     def test_classify_multimodal_query(self, classifier):
         """Test multimodal query -> ColPali."""

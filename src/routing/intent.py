@@ -10,22 +10,27 @@ logger = logging.getLogger(__name__)
 
 
 class QueryIntent(str, Enum):
-    """Query intent types mapped to retrieval strategies."""
+    """Query intent types mapped to retrieval strategies.
+
+    December 2025: Added MULTI_HOP for MCTS-RAG strategy.
+    """
 
     FACTUAL = "factual"  # Specific fact lookup -> hybrid
     GLOBAL = "global"  # Thematic/summary questions -> GraphRAG
-    HIERARCHICAL = "hierarchical"  # Document structure -> RAPTOR
-    MULTIMODAL = "multimodal"  # Visual content -> ColPali
+    HIERARCHICAL = "hierarchical"  # Document structure -> LeanRAG (was RAPTOR)
+    MULTIMODAL = "multimodal"  # Visual content -> ColPali/ColQwen2
     COMPARATIVE = "comparative"  # Compare multiple items -> multi-query
+    MULTI_HOP = "multi_hop"  # December 2025: Complex reasoning -> MCTS-RAG
 
 
-# Intent to strategy mapping
+# Intent to strategy mapping (December 2025 updated)
 INTENT_TO_STRATEGY = {
     QueryIntent.FACTUAL: "hybrid",
     QueryIntent.GLOBAL: "graphrag",
-    QueryIntent.HIERARCHICAL: "raptor",
+    QueryIntent.HIERARCHICAL: "leanrag",  # December 2025: was "raptor"
     QueryIntent.MULTIMODAL: "colpali",
     QueryIntent.COMPARATIVE: "hybrid",  # multi-query decomposition + hybrid
+    QueryIntent.MULTI_HOP: "mcts",  # December 2025: MCTS-RAG for complex reasoning
 }
 
 
@@ -48,7 +53,7 @@ class IntentClassifier:
     2. LLM classification (accurate, requires API call)
     """
 
-    # Keyword patterns for each intent
+    # Keyword patterns for each intent (December 2025: added MULTI_HOP)
     INTENT_KEYWORDS = {
         QueryIntent.GLOBAL: [
             "what are all", "list all", "summarize", "overview",
@@ -76,6 +81,16 @@ class IntentClassifier:
             "contrast", "how does .* differ", "similarities",
             "pros and cons", "advantages", "disadvantages",
             "which is better", "what are the differences",
+        ],
+        # December 2025: MULTI_HOP patterns for MCTS-RAG (more specific)
+        QueryIntent.MULTI_HOP: [
+            "which impacts", "which leads to", "which affects",
+            "cascading effects", "chain of", "trace the relationship",
+            "implications of", "consequences of",
+            "step by step reasoning", "multi-step",
+            "lead to", "result in",
+            "what caused", "what led to", "what resulted",
+            "how does .* affect", "how did .* lead",
         ],
     }
 

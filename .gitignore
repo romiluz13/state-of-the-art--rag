@@ -58,6 +58,7 @@ dmypy.json
 planning/
 build-process/
 nov-research/
+dec-research/
 
 # Claude Code internal files
 .claude/

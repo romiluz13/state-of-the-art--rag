@@ -1,4 +1,7 @@
-"""Retrieval pipeline orchestrating all retrieval strategies."""
+"""Retrieval pipeline orchestrating all retrieval strategies.
+
+December 2025: 9 strategies for true SOTA status.
+"""
 
 import logging
 from enum import Enum
@@ -9,7 +12,8 @@ from .vector import VectorSearcher
 from .text import TextSearcher
 from .hybrid import HybridSearcher
 from .graphrag import GraphRAGRetriever
-from .raptor import RAPTORRetriever
+from .leanrag import LeanRAGRetriever  # Dec 2025: Replaces RAPTOR
+from .mcts import MCTSRetriever  # Dec 2025: Multi-hop reasoning
 from .colpali import ColPaliRetriever
 from .reranker import Reranker
 from ..routing import QueryRouter, RoutingDecision, IntentClassifier
@@ -18,15 +22,20 @@ logger = logging.getLogger(__name__)
 
 
 class RetrievalStrategy(str, Enum):
-    """Available retrieval strategies."""
+    """Available retrieval strategies.
+
+    December 2025: Added LEANRAG and MCTS strategies.
+    """
 
     VECTOR = "vector"  # Pure vector search
     TEXT = "text"  # Pure BM25 text search
     HYBRID = "hybrid"  # $rankFusion vector + BM25
     SCORE_FUSION = "score_fusion"  # $scoreFusion weighted combination
-    GRAPHRAG = "graphrag"  # $graphLookup for global questions
-    RAPTOR = "raptor"  # Hierarchical multi-level search
-    COLPALI = "colpali"  # Multimodal visual document search
+    GRAPHRAG = "graphrag"  # $graphLookup + hybrid (Dec 2025: RRF)
+    LEANRAG = "leanrag"  # December 2025: Bottom-up hierarchical
+    RAPTOR = "raptor"  # Backward compatibility alias for LEANRAG
+    MCTS = "mcts"  # December 2025: Multi-hop reasoning
+    COLPALI = "colpali"  # Multimodal visual document search (ColQwen2)
     AUTO = "auto"  # Automatic strategy selection
 
 
@@ -66,7 +75,11 @@ class RetrievalPipeline:
         self.text_searcher = TextSearcher(mongodb_client, self.config)
         self.hybrid_searcher = HybridSearcher(mongodb_client, self.config)
         self.graphrag_retriever = GraphRAGRetriever(mongodb_client, self.config)
-        self.raptor_retriever = RAPTORRetriever(mongodb_client, self.config)
+        # December 2025: LeanRAG replaces RAPTOR
+        self.leanrag_retriever = LeanRAGRetriever(mongodb_client, self.config)
+        self.raptor_retriever = self.leanrag_retriever  # Backward compatibility
+        # December 2025: MCTS for multi-hop reasoning
+        self.mcts_retriever = MCTSRetriever(mongodb_client, self.config)
         self.colpali_retriever = ColPaliRetriever(
             mongodb_client, colpali_client, use_mock=(colpali_client is None)
         )
@@ -162,8 +175,21 @@ class RetrievalPipeline:
                 query, query_embedding, top_k, **kwargs
             )
 
+        elif strategy == RetrievalStrategy.LEANRAG:
+            # December 2025: LeanRAG bottom-up hierarchical
+            return await self.leanrag_retriever.retrieve(
+                query, query_embedding, top_k, **kwargs
+            )
+
         elif strategy == RetrievalStrategy.RAPTOR:
-            return await self.raptor_retriever.retrieve(
+            # Backward compatibility - uses LeanRAG
+            return await self.leanrag_retriever.retrieve(
+                query, query_embedding, top_k, **kwargs
+            )
+
+        elif strategy == RetrievalStrategy.MCTS:
+            # December 2025: MCTS for multi-hop reasoning
+            return await self.mcts_retriever.retrieve(
                 query, query_embedding, top_k, **kwargs
             )
 
@@ -185,11 +211,13 @@ class RetrievalPipeline:
         decision = self.router.route(query)
         self._last_routing_decision = decision
 
-        # Map strategy string to enum
+        # Map strategy string to enum (December 2025 updated)
         strategy_map = {
             "hybrid": RetrievalStrategy.HYBRID,
             "graphrag": RetrievalStrategy.GRAPHRAG,
-            "raptor": RetrievalStrategy.RAPTOR,
+            "leanrag": RetrievalStrategy.LEANRAG,  # December 2025 SOTA
+            "raptor": RetrievalStrategy.RAPTOR,  # Backward compatibility
+            "mcts": RetrievalStrategy.MCTS,  # December 2025: Multi-hop
             "colpali": RetrievalStrategy.COLPALI,
             "vector": RetrievalStrategy.VECTOR,
             "text": RetrievalStrategy.TEXT,

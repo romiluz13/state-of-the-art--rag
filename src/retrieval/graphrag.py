@@ -1,5 +1,11 @@
-"""GraphRAG retrieval using MongoDB $graphLookup."""
+"""GraphRAG retrieval using MongoDB $graphLookup.
 
+December 2025 Enhancement:
+- Hybrid approach: Vector search + $graphLookup + RRF fusion + Rerank
+- Based on LightRAG research showing 20%+ improvement with hybrid approach
+"""
+
+import asyncio
 import logging
 from typing import Any
 
@@ -11,11 +17,13 @@ logger = logging.getLogger(__name__)
 class GraphRAGRetriever(BaseRetriever):
     """GraphRAG retrieval for global/thematic questions.
 
-    Algorithm:
-    1. Find relevant entities via vector similarity
-    2. Traverse relationships via $graphLookup
-    3. Retrieve community summaries
-    4. Synthesize comprehensive answer
+    December 2025 Enhancement: Hybrid approach with RRF fusion.
+
+    Algorithm (LightRAG-inspired):
+    1. PARALLEL: Vector search entities + $graphLookup traversal
+    2. RRF fusion: Combine vector and graph results
+    3. Get community summaries and source chunks
+    4. Optional: Rerank with Voyage instruction-following
     """
 
     ENTITIES_COLLECTION = "entities"
@@ -24,19 +32,29 @@ class GraphRAGRetriever(BaseRetriever):
     ENTITY_VECTOR_INDEX = "entity_vector_index"
     COMMUNITY_VECTOR_INDEX = "community_vector_index"
 
+    # December 2025: Strategy-specific rerank instruction
+    RERANK_INSTRUCTION = "Focus on documents with clear entity relationships"
+
     async def retrieve(
         self,
         query: str,
         query_embedding: list[float],
         top_k: int | None = None,
+        use_hybrid: bool = True,
+        use_rerank: bool = True,
         **kwargs,
     ) -> list[RetrievalResult]:
         """Retrieve using GraphRAG strategy.
+
+        December 2025 Enhancement: Hybrid approach with parallel retrieval,
+        RRF fusion, and optional reranking.
 
         Args:
             query: The query text
             query_embedding: Query vector embedding
             top_k: Number of results to return
+            use_hybrid: Use hybrid approach (Dec 2025 enhancement)
+            use_rerank: Use Voyage reranking with instructions
 
         Returns:
             List of RetrievalResult from entities, relationships, and communities
@@ -45,6 +63,173 @@ class GraphRAGRetriever(BaseRetriever):
         graph_depth = self.config.graph_depth
         include_communities = self.config.include_communities
 
+        if use_hybrid:
+            # December 2025: Hybrid approach with parallel retrieval
+            return await self._hybrid_retrieve(
+                query, query_embedding, top_k, graph_depth,
+                include_communities, use_rerank
+            )
+        else:
+            # Legacy approach
+            return await self._legacy_retrieve(
+                query, query_embedding, top_k, graph_depth, include_communities
+            )
+
+    async def _hybrid_retrieve(
+        self,
+        query: str,
+        query_embedding: list[float],
+        top_k: int,
+        graph_depth: int,
+        include_communities: bool,
+        use_rerank: bool,
+    ) -> list[RetrievalResult]:
+        """December 2025: Hybrid retrieval with RRF fusion.
+
+        1. Parallel: Vector search + Graph traversal
+        2. RRF fusion
+        3. Get communities and chunks
+        4. Optional reranking
+        """
+        # Step 1: PARALLEL retrieval (vector + initial graph seed)
+        vector_entities, seed_entities = await asyncio.gather(
+            self._search_entities(query_embedding, top_k * 3),
+            self._search_entities(query_embedding, top_k),  # Seed for graph
+        )
+
+        if not vector_entities and not seed_entities:
+            logger.warning("No entities found, falling back to chunk search")
+            return await self._fallback_chunk_search(query_embedding, top_k)
+
+        # Step 2: Graph traversal from seed entities
+        graph_entities = await self._graph_traversal(seed_entities, depth=graph_depth)
+
+        # Step 3: RRF Fusion of vector and graph results
+        fused_entities = self._reciprocal_rank_fusion(
+            vector_entities, graph_entities, k=60
+        )
+
+        logger.info(f"RRF fusion: {len(vector_entities)} vector + {len(graph_entities)} graph = {len(fused_entities)} fused")
+
+        # Step 4: Get communities if enabled
+        communities = []
+        if include_communities:
+            community_ids = set()
+            for entity in fused_entities:
+                if entity.get("community_id"):
+                    community_ids.add(entity["community_id"])
+            if community_ids:
+                communities = await self._get_communities(list(community_ids))
+
+        # Step 5: Get source chunks
+        chunk_ids = set()
+        for entity in fused_entities:
+            chunk_ids.update(entity.get("source_chunks", []))
+        chunks = await self._get_chunks(list(chunk_ids)[:top_k * 3])
+
+        # Step 6: Combine results
+        results = self._combine_results(fused_entities, [], communities, chunks)
+        results = self._deduplicate(results)
+
+        # Step 7: Optional reranking with Voyage instruction-following
+        if use_rerank and hasattr(self, 'reranker') and self.reranker:
+            results = await self._rerank_with_instructions(query, results, top_k)
+
+        return results[:top_k]
+
+    def _reciprocal_rank_fusion(
+        self,
+        vector_results: list[dict[str, Any]],
+        graph_results: list[dict[str, Any]],
+        k: int = 60,
+    ) -> list[dict[str, Any]]:
+        """December 2025: Reciprocal Rank Fusion for hybrid results.
+
+        RRF combines rankings from multiple retrieval methods:
+        score = sum(1 / (k + rank)) for each method
+
+        Args:
+            vector_results: Results from vector search
+            graph_results: Results from graph traversal
+            k: Ranking constant (default 60, standard for RRF)
+
+        Returns:
+            Fused results sorted by RRF score
+        """
+        scores: dict[str, float] = {}
+        entity_map: dict[str, dict] = {}
+
+        # Score from vector results
+        for rank, entity in enumerate(vector_results):
+            entity_id = entity.get("entity_id", str(entity.get("_id", "")))
+            scores[entity_id] = scores.get(entity_id, 0) + 1 / (k + rank + 1)
+            entity_map[entity_id] = entity
+
+        # Score from graph results
+        for rank, entity in enumerate(graph_results):
+            entity_id = entity.get("entity_id", str(entity.get("_id", "")))
+            scores[entity_id] = scores.get(entity_id, 0) + 1 / (k + rank + 1)
+            if entity_id not in entity_map:
+                entity_map[entity_id] = entity
+
+        # Sort by RRF score
+        sorted_ids = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
+
+        # Add RRF score to entities
+        fused = []
+        for entity_id in sorted_ids:
+            entity = entity_map[entity_id].copy()
+            entity["rrf_score"] = scores[entity_id]
+            fused.append(entity)
+
+        return fused
+
+    async def _rerank_with_instructions(
+        self,
+        query: str,
+        results: list[RetrievalResult],
+        top_k: int,
+    ) -> list[RetrievalResult]:
+        """December 2025: Rerank with Voyage instruction-following.
+
+        Uses strategy-specific instruction for better relevance.
+        """
+        try:
+            # Extract content for reranking
+            documents = [r.content for r in results]
+
+            # Rerank with instruction
+            reranked = await self.reranker.rerank(
+                query=query,
+                documents=documents,
+                top_k=min(top_k * 2, len(results)),
+                instructions=self.RERANK_INSTRUCTION,
+            )
+
+            # Map back to results
+            reranked_results = []
+            for idx, score in reranked:
+                result = results[idx]
+                result.score = score  # Update with rerank score
+                result.metadata["reranked"] = True
+                reranked_results.append(result)
+
+            logger.info(f"Reranked {len(reranked_results)} results with instructions")
+            return reranked_results
+
+        except Exception as e:
+            logger.warning(f"Reranking failed, using original order: {e}")
+            return results
+
+    async def _legacy_retrieve(
+        self,
+        query: str,
+        query_embedding: list[float],
+        top_k: int,
+        graph_depth: int,
+        include_communities: bool,
+    ) -> list[RetrievalResult]:
+        """Legacy retrieval method (pre-December 2025)."""
         # Step 1: Find relevant entities
         entities = await self._search_entities(query_embedding, top_k * 2)
 

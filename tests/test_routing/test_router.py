@@ -161,7 +161,7 @@ class TestQueryRouter:
     def test_get_strategy_for_intent(self, router):
         """Test getting strategy for specific intent."""
         assert router.get_strategy_for_intent(QueryIntent.GLOBAL) == "graphrag"
-        assert router.get_strategy_for_intent(QueryIntent.HIERARCHICAL) == "raptor"
+        assert router.get_strategy_for_intent(QueryIntent.HIERARCHICAL) == "leanrag"  # Dec 2025
         assert router.get_strategy_for_intent(QueryIntent.MULTIMODAL) == "colpali"
 
     def test_update_ab_test(self, router):

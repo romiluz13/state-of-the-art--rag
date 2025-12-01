@@ -1,4 +1,11 @@
-"""ColPali embedder for multimodal document embeddings."""
+"""ColQwen2 embedder for multimodal document embeddings.
+
+December 2025 Upgrade:
+- Model: vidore/colpali-v1.2 → vidore/colqwen2-v1.0
+- Improvement: +4.5 ViDoRe points (84.8 → 89.3)
+
+Note: Class names preserved for backward compatibility.
+"""
 
 import logging
 from dataclasses import dataclass, field
@@ -7,7 +14,14 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from src.clients.colpali import ColPaliClient, ColPaliConfig, MockColPaliClient
+from src.clients.colpali import (
+    ColPaliClient,
+    ColPaliConfig,
+    ColQwen2Client,
+    ColQwen2Config,
+    MockColPaliClient,
+    MockColQwen2Client,
+)
 from src.ingestion.loaders.pdf import PageImage
 
 logger = logging.getLogger(__name__)
@@ -49,7 +63,9 @@ class ColPaliPageEmbedding:
 
 
 class ColPaliEmbedder:
-    """Generate ColPali embeddings for document pages.
+    """Generate ColQwen2 embeddings for document pages.
+
+    December 2025 Upgrade: Now uses ColQwen2-v1.0 (+4.5 ViDoRe points).
 
     Integrates with the ingestion pipeline to create multimodal
     embeddings for PDF pages that can be searched visually.
@@ -61,11 +77,11 @@ class ColPaliEmbedder:
         config: ColPaliConfig | None = None,
         use_mock: bool = False,
     ):
-        """Initialize ColPali embedder.
+        """Initialize ColQwen2 embedder.
 
         Args:
-            client: Existing ColPali client to use
-            config: ColPali configuration
+            client: Existing ColQwen2 client to use
+            config: ColQwen2 configuration
             use_mock: Use mock client for testing
         """
         if client:
@@ -200,3 +216,8 @@ class ColPaliEmbedder:
     async def close(self):
         """Clean up resources."""
         await self.client.close()
+
+
+# December 2025: Aliases for ColQwen2 upgrade (backward compatible)
+ColQwen2Embedder = ColPaliEmbedder
+ColQwen2PageEmbedding = ColPaliPageEmbedding

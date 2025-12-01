@@ -1,22 +1,28 @@
-"""Tests for ColPali client."""
+"""Tests for ColQwen2 client (upgraded from ColPali in December 2025)."""
 
 import pytest
 import numpy as np
 from PIL import Image
 
-from src.clients.colpali import ColPaliConfig, MockColPaliClient
+from src.clients.colpali import ColPaliConfig, MockColPaliClient, ColQwen2Config
 
 
 class TestColPaliConfig:
-    """Tests for ColPali configuration."""
+    """Tests for ColQwen2 configuration (backward-compatible name)."""
 
     def test_default_config(self):
-        """Test default configuration values."""
+        """Test default configuration values - December 2025: ColQwen2-v1.0."""
         config = ColPaliConfig()
-        assert config.model_name == "vidore/colpali-v1.2"
+        assert config.model_name == "vidore/colqwen2-v1.0"  # Upgraded Dec 2025
         assert config.device == "cpu"
         assert config.max_image_size == 448
         assert config.batch_size == 4
+
+    def test_colqwen2_alias(self):
+        """Test ColQwen2Config is alias of ColPaliConfig."""
+        config = ColQwen2Config()
+        assert config.model_name == "vidore/colqwen2-v1.0"
+        assert isinstance(config, ColPaliConfig)
 
     def test_custom_config(self):
         """Test custom configuration."""

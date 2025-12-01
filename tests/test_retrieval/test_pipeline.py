@@ -98,8 +98,8 @@ class TestRetrievalPipeline:
             strategy = pipeline._auto_select_strategy(query)
             assert strategy == RetrievalStrategy.GRAPHRAG, f"Failed for: {query}"
 
-    def test_auto_select_raptor(self, pipeline):
-        """Test auto-selection for hierarchical questions."""
+    def test_auto_select_leanrag(self, pipeline):
+        """Test auto-selection for hierarchical questions -> LeanRAG (Dec 2025)."""
         queries = [
             "What does the introduction say?",
             "Read chapter 3 section",
@@ -107,7 +107,7 @@ class TestRetrievalPipeline:
         ]
         for query in queries:
             strategy = pipeline._auto_select_strategy(query)
-            assert strategy == RetrievalStrategy.RAPTOR, f"Failed for: {query}"
+            assert strategy == RetrievalStrategy.LEANRAG, f"Failed for: {query}"
 
     def test_auto_select_text(self, pipeline):
         """Test auto-selection for exact matches."""
@@ -182,7 +182,7 @@ class TestAutoStrategySelection:
             assert pipeline._auto_select_strategy(query) == RetrievalStrategy.GRAPHRAG
 
     def test_hierarchical_keywords(self, pipeline):
-        """Test hierarchical keywords trigger RAPTOR."""
+        """Test hierarchical keywords trigger LeanRAG (Dec 2025: was RAPTOR)."""
         hier_queries = [
             "first section",
             "last chapter",
@@ -190,4 +190,4 @@ class TestAutoStrategySelection:
             "paper abstract",
         ]
         for query in hier_queries:
-            assert pipeline._auto_select_strategy(query) == RetrievalStrategy.RAPTOR
+            assert pipeline._auto_select_strategy(query) == RetrievalStrategy.LEANRAG

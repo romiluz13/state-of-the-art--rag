@@ -1,4 +1,7 @@
-"""Reranking using Voyage AI rerank-2.5."""
+"""Reranking using Voyage AI rerank-2.5.
+
+December 2025: Added instruction-following for strategy-specific reranking.
+"""
 
 import logging
 from typing import Any
@@ -11,11 +14,25 @@ logger = logging.getLogger(__name__)
 class Reranker:
     """Reranker using Voyage AI rerank-2.5.
 
-    Improves retrieval quality by re-scoring results with a cross-encoder model.
+    December 2025 Enhancement: Instruction-following for strategy-specific reranking.
+    Each retrieval strategy has a custom instruction to improve relevance.
     """
 
     DEFAULT_MODEL = "rerank-2.5"
     MAX_DOCUMENTS = 1000  # Voyage API limit
+
+    # December 2025: Strategy-specific rerank instructions
+    STRATEGY_INSTRUCTIONS = {
+        "hybrid": "Prioritize documents matching both semantic meaning and exact keywords",
+        "graphrag": "Focus on documents with clear entity relationships and connections",
+        "leanrag": "Prefer summaries for broad questions, specific details for narrow queries",
+        "raptor": "Prefer summaries for broad questions, specific details for narrow queries",  # Alias
+        "colpali": "Weight visual evidence (charts, diagrams, tables) higher when relevant",
+        "multi_query": "Rank documents that address multiple aspects of the query",
+        "mcts": "Prioritize documents supporting the multi-hop reasoning path",
+        "vector": "Rank by overall semantic similarity to the query",
+        "text": "Prioritize exact keyword matches and phrase overlap",
+    }
 
     def __init__(self, voyage_client: Any, model: str | None = None):
         """Initialize reranker.
@@ -32,13 +49,19 @@ class Reranker:
         query: str,
         results: list[RetrievalResult],
         top_k: int | None = None,
+        strategy: str | None = None,
+        instructions: str | None = None,
     ) -> list[RetrievalResult]:
         """Rerank retrieval results using Voyage reranker.
+
+        December 2025: Added instruction-following for strategy-specific reranking.
 
         Args:
             query: The original query
             results: List of retrieval results to rerank
             top_k: Number of results to return after reranking
+            strategy: Strategy name for automatic instruction lookup
+            instructions: Custom instructions (overrides strategy instruction)
 
         Returns:
             Reranked list of RetrievalResult
@@ -53,17 +76,29 @@ class Reranker:
             )
             results = results[: self.MAX_DOCUMENTS]
 
+        # December 2025: Get strategy-specific instruction
+        rerank_instructions = instructions
+        if not rerank_instructions and strategy:
+            rerank_instructions = self.STRATEGY_INSTRUCTIONS.get(strategy)
+
         # Extract documents for reranking
         documents = [r.content for r in results]
 
         try:
-            # Call Voyage reranking API
-            response = await self.voyage.rerank(
-                query=query,
-                documents=documents,
-                model=self.model,
-                top_k=top_k or len(results),
-            )
+            # Call Voyage reranking API (December 2025: with instructions)
+            rerank_kwargs = {
+                "query": query,
+                "documents": documents,
+                "model": self.model,
+                "top_k": top_k or len(results),
+            }
+
+            # Add instructions if available (Voyage rerank-2.5 feature)
+            if rerank_instructions:
+                rerank_kwargs["instructions"] = rerank_instructions
+                logger.info(f"Reranking with instruction: {rerank_instructions[:50]}...")
+
+            response = await self.voyage.rerank(**rerank_kwargs)
 
             # Map reranked results back
             reranked = []
@@ -74,6 +109,7 @@ class Reranker:
                 result = results[idx]
                 result.rerank_score = score
                 result.score = score  # Update main score to rerank score
+                result.metadata["rerank_instruction"] = rerank_instructions or "none"
                 reranked.append(result)
 
             logger.info(f"Reranked {len(reranked)} results")
@@ -185,3 +221,23 @@ class Reranker:
             })
 
         return analysis
+
+    def get_instruction_for_strategy(self, strategy: str) -> str | None:
+        """December 2025: Get instruction for a strategy.
+
+        Args:
+            strategy: Strategy name
+
+        Returns:
+            Instruction string or None if not found
+        """
+        return self.STRATEGY_INSTRUCTIONS.get(strategy)
+
+    @classmethod
+    def list_available_instructions(cls) -> dict[str, str]:
+        """December 2025: List all available strategy instructions.
+
+        Returns:
+            Dict of strategy -> instruction
+        """
+        return cls.STRATEGY_INSTRUCTIONS.copy()

@@ -1,7 +1,14 @@
-"""ColPali client for multimodal document embeddings.
+"""ColQwen2 client for multimodal document embeddings.
 
-ColPali creates visual embeddings for document pages using late interaction,
-enabling search of PDFs by visual content without OCR.
+ColQwen2 (upgraded from ColPali in December 2025) creates visual embeddings
+for document pages using late interaction, enabling search of PDFs by visual
+content without OCR.
+
+December 2025 Upgrade:
+- Model: vidore/colpali-v1.2 → vidore/colqwen2-v1.0
+- Improvement: +4.5 ViDoRe points (84.8 → 89.3)
+- License: Gemma → Apache 2.0
+- Features: Dynamic resolution support
 """
 
 import logging
@@ -17,12 +24,19 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ColPaliConfig:
-    """Configuration for ColPali client."""
+    """Configuration for ColQwen2 client (backward-compatible name).
 
-    model_name: str = "vidore/colpali-v1.2"
+    December 2025: Upgraded to ColQwen2-v1.0 for +4.5 ViDoRe improvement.
+    """
+
+    model_name: str = "vidore/colqwen2-v1.0"  # Upgraded from colpali-v1.2
     device: str = "cpu"  # "cpu", "cuda", "mps"
-    max_image_size: int = 448  # ColPali input size
+    max_image_size: int = 448  # Dynamic resolution supported in ColQwen2
     batch_size: int = 4
+
+
+# Alias for December 2025 upgrade
+ColQwen2Config = ColPaliConfig
 
 
 @dataclass
@@ -35,9 +49,11 @@ class PageEmbedding:
 
 
 class ColPaliClient:
-    """Client for ColPali multimodal embeddings.
+    """Client for ColQwen2 multimodal embeddings (backward-compatible name).
 
-    ColPali uses late interaction (like ColBERT) where:
+    December 2025 Upgrade: Now uses ColQwen2-v1.0 (+4.5 ViDoRe points).
+
+    ColQwen2 uses late interaction (like ColBERT) where:
     - Each document page produces multiple patch embeddings
     - Query also produces multiple token embeddings
     - Similarity is computed via MaxSim over all patches/tokens
@@ -46,10 +62,10 @@ class ColPaliClient:
     """
 
     def __init__(self, config: ColPaliConfig | None = None):
-        """Initialize ColPali client.
+        """Initialize ColQwen2 client.
 
         Args:
-            config: ColPali configuration
+            config: ColQwen2 configuration (ColPaliConfig for backward compatibility)
         """
         self.config = config or ColPaliConfig()
         self._model = None
@@ -62,15 +78,28 @@ class ColPaliClient:
             return
 
         try:
-            from colpali_engine.models import ColPali, ColPaliProcessor
+            # December 2025: Upgraded to ColQwen2
+            # Try ColQwen2 first (new), fall back to ColPali (legacy)
+            try:
+                from colpali_engine.models import ColQwen2, ColQwen2Processor
+                model_class = ColQwen2
+                processor_class = ColQwen2Processor
+                logger.info(f"Loading ColQwen2 model: {self.config.model_name}")
+            except ImportError:
+                # Fallback to ColPali for older colpali-engine versions
+                from colpali_engine.models import ColPali, ColPaliProcessor
+                model_class = ColPali
+                processor_class = ColPaliProcessor
+                logger.warning(
+                    "ColQwen2 not available, falling back to ColPali. "
+                    "Upgrade colpali-engine for better performance."
+                )
 
-            logger.info(f"Loading ColPali model: {self.config.model_name}")
-
-            self._model = ColPali.from_pretrained(
+            self._model = model_class.from_pretrained(
                 self.config.model_name,
                 torch_dtype="auto",
             )
-            self._processor = ColPaliProcessor.from_pretrained(
+            self._processor = processor_class.from_pretrained(
                 self.config.model_name,
             )
 
@@ -82,7 +111,7 @@ class ColPaliClient:
 
             self._model.eval()
             self._initialized = True
-            logger.info("ColPali model loaded successfully")
+            logger.info(f"Model loaded successfully: {self.config.model_name}")
 
         except ImportError:
             logger.warning(
@@ -91,7 +120,7 @@ class ColPaliClient:
             )
             raise
         except Exception as e:
-            logger.error(f"Failed to load ColPali model: {e}")
+            logger.error(f"Failed to load model: {e}")
             raise
 
     def embed_image(self, image: Image.Image) -> np.ndarray:
@@ -255,7 +284,7 @@ class ColPaliClient:
 
 
 class MockColPaliClient(ColPaliClient):
-    """Mock ColPali client for testing without GPU/model."""
+    """Mock ColQwen2 client for testing without GPU/model."""
 
     def __init__(self, config: ColPaliConfig | None = None):
         """Initialize mock client."""
@@ -287,3 +316,8 @@ class MockColPaliClient(ColPaliClient):
     async def close(self):
         """No-op for mock."""
         pass
+
+
+# December 2025: Aliases for ColQwen2 upgrade (backward compatible)
+ColQwen2Client = ColPaliClient
+MockColQwen2Client = MockColPaliClient
